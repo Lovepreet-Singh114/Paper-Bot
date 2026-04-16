@@ -33,4 +33,4 @@ journals_crossref:
   - "Nature Plants"
 
 top_n: 2
-lookback_hours: 24
+lookback_hours: 72
