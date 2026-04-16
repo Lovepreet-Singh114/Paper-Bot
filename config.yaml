@@ -8,14 +8,8 @@ genomic_keywords:
   - "GBLUP"
   - "rrBLUP"
   - "ssGBLUP"
-  - "bayesian prediction"
-  - "BayesB"
-  - "genome-wide prediction"
-  - "GWAS"
-  - "genome-wide association"
-  - "QTL mapping"
-  - "marker-assisted selection"
-  - "SNP marker"
+
+
 
 bean_keywords:
   - "Phaseolus vulgaris"
@@ -53,6 +47,12 @@ other_keywords:
   - "drought tolerance"
   - "disease resistance"
   - "abiotic stress"
+  - "genome-wide prediction"
+  - "GWAS"
+  - "genome-wide association"
+  - "QTL mapping"
+  - "marker-assisted selection"
+  - "SNP marker"
 
 journals_crossref:
   - "Theoretical and Applied Genetics"
