@@ -17,13 +17,11 @@ GENOMIC_KW = [k.lower() for k in CFG["genomic_keywords"]]
 BEAN_KW = [k.lower() for k in CFG["bean_keywords"]]
 OTHER_KW = [k.lower() for k in CFG["other_keywords"]]
 JOURNALS = CFG["journals_crossref"]
-TOP_N = CFG.get("top_n", 2)
 LOOKBACK = CFG.get("lookback_hours", 72)
 
 SLACK_WEBHOOK = os.environ["SLACK_WEBHOOK_URL"]
 
 CUTOFF = datetime.now(timezone.utc) - timedelta(hours=LOOKBACK)
-
 SEEN_FILE = "seen.json"
 
 ALL_KW = GENOMIC_KW + BEAN_KW + OTHER_KW
@@ -47,30 +45,28 @@ def paper_id(p):
     return (p.get("link") or p.get("title", "")).strip().lower()
 
 
-# -------- Matching logic --------
+# -------- Matching --------
 def match_keywords(text, kw_list):
     text = (text or "").lower()
     return [kw for kw in kw_list if kw in text]
 
 
-def evaluate(title, abstract):
-    """
-    Rules:
-      - Passes if matches any genomic keyword (any crop OK), OR
-      - Passes if matches bean keyword AND at least one other keyword
-    """
-    blob = f"{title} {abstract}".lower()
-    genomic_hits = match_keywords(blob, GENOMIC_KW)
-    bean_hits = match_keywords(blob, BEAN_KW)
-    other_hits = match_keywords(blob, OTHER_KW)
+def tag_paper(p):
+    """Attach keyword-hit info and compute a base score."""
+    blob = f"{p.get('title','')} {p.get('abstract','')}".lower()
+    p["_genomic_hits"] = match_keywords(blob, GENOMIC_KW)
+    p["_bean_hits"] = match_keywords(blob, BEAN_KW)
+    p["_other_hits"] = match_keywords(blob, OTHER_KW)
+    p["score"] = (
+        len(p["_genomic_hits"]) * 2
+        + len(p["_bean_hits"]) * 2
+        + len(p["_other_hits"])
+    )
+    return p
 
-    if genomic_hits:
-        score = len(genomic_hits) * 2 + len(bean_hits) * 2 + len(other_hits)
-        return True, score
-    if bean_hits and other_hits:
-        score = len(bean_hits) * 2 + len(other_hits)
-        return True, score
-    return False, 0
+
+def has_any_keyword(p):
+    return bool(p["_genomic_hits"] or p["_bean_hits"] or p["_other_hits"])
 
 
 # -------- Crossref --------
@@ -90,15 +86,14 @@ def fetch_crossref():
                 abstract = re.sub(r"<[^>]+>", "", it.get("abstract", "") or "")
                 doi = it.get("DOI", "")
                 link = f"https://doi.org/{doi}" if doi else it.get("URL", "")
-                passes, score = evaluate(title, abstract)
-                if passes:
-                    results.append({
-                        "title": title,
-                        "abstract": abstract,
-                        "link": link,
-                        "source": journal,
-                        "score": score,
-                    })
+                p = tag_paper({
+                    "title": title,
+                    "abstract": abstract,
+                    "link": link,
+                    "source": journal,
+                })
+                if has_any_keyword(p):
+                    results.append(p)
         except Exception as e:
             print(f"Crossref error for {journal}: {e}", file=sys.stderr)
         time.sleep(0.5)
@@ -116,18 +111,85 @@ def fetch_arxiv():
             pub = datetime(*e.published_parsed[:6], tzinfo=timezone.utc)
             if pub < CUTOFF:
                 continue
-            passes, score = evaluate(e.title, e.summary)
-            if passes:
-                results.append({
-                    "title": e.title,
-                    "abstract": e.summary,
-                    "link": e.link,
-                    "source": "arXiv",
-                    "score": score,
-                })
+            p = tag_paper({
+                "title": e.title,
+                "abstract": e.summary,
+                "link": e.link,
+                "source": "arXiv",
+            })
+            if has_any_keyword(p):
+                results.append(p)
     except Exception as ex:
         print(f"arXiv error: {ex}", file=sys.stderr)
     return results
+
+
+# -------- bioRxiv --------
+def fetch_biorxiv():
+    results = []
+    end = datetime.now(timezone.utc).date()
+    start = (datetime.now(timezone.utc) - timedelta(hours=LOOKBACK)).date()
+    url = f"https://api.biorxiv.org/details/biorxiv/{start}/{end}/0"
+    try:
+        cursor = 0
+        for _ in range(5):  # pull up to 5 pages (~500 papers)
+            page_url = f"https://api.biorxiv.org/details/biorxiv/{start}/{end}/{cursor}"
+            r = requests.get(page_url, timeout=30)
+            data = r.json()
+            papers = data.get("collection", [])
+            if not papers:
+                break
+            for it in papers:
+                title = it.get("title", "")
+                abstract = it.get("abstract", "")
+                doi = it.get("doi", "")
+                link = f"https://doi.org/{doi}" if doi else ""
+                p = tag_paper({
+                    "title": title,
+                    "abstract": abstract,
+                    "link": link,
+                    "source": "bioRxiv",
+                })
+                if has_any_keyword(p):
+                    results.append(p)
+            cursor += len(papers)
+            if len(papers) < 100:
+                break
+    except Exception as ex:
+        print(f"bioRxiv error: {ex}", file=sys.stderr)
+    return results
+
+
+# -------- Slot-based selection --------
+def pick_by_slots(papers):
+    """Pick 1 genomic + 1 bean + 1 bioRxiv, filling gaps with next-best."""
+    picked = []
+    picked_ids = set()
+
+    def take(candidates):
+        for c in sorted(candidates, key=lambda x: x["score"], reverse=True):
+            if paper_id(c) not in picked_ids:
+                picked.append(c)
+                picked_ids.add(paper_id(c))
+                return True
+        return False
+
+    # Slot 1: genomic (any source)
+    take([p for p in papers if p["_genomic_hits"]])
+    # Slot 2: bean (any source, not already picked)
+    take([p for p in papers if p["_bean_hits"]])
+    # Slot 3: bioRxiv (any keyword)
+    take([p for p in papers if p["source"] == "bioRxiv"])
+
+    # Fill any empty slots with best remaining
+    remaining = [p for p in papers if paper_id(p) not in picked_ids]
+    while len(picked) < 3 and remaining:
+        best = max(remaining, key=lambda x: x["score"])
+        picked.append(best)
+        picked_ids.add(paper_id(best))
+        remaining = [p for p in remaining if paper_id(p) not in picked_ids]
+
+    return picked
 
 
 # -------- Slack --------
@@ -155,8 +217,9 @@ def post_slack(papers):
 # -------- Main --------
 def main():
     seen = load_seen()
-    all_papers = fetch_crossref() + fetch_arxiv()
+    all_papers = fetch_crossref() + fetch_arxiv() + fetch_biorxiv()
 
+    # filter already-seen and dedupe within run
     run_seen, unique = set(), []
     for p in all_papers:
         pid = paper_id(p)
@@ -165,7 +228,7 @@ def main():
         run_seen.add(pid)
         unique.append(p)
 
-    top = sorted(unique, key=lambda x: x["score"], reverse=True)[:TOP_N]
+    top = pick_by_slots(unique)
     post_slack(top)
 
     for p in top:
