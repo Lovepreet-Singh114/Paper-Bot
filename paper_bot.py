@@ -2,13 +2,12 @@ import os
 import re
 import sys
 import yaml
-import json
 import time
 import requests
 import feedparser
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote_plus
-from anthropic import Anthropic
+from openai import OpenAI
 
 # -------- Load config --------
 with open("config.yaml") as f:
@@ -20,9 +19,9 @@ TOP_N = CFG.get("top_n", 2)
 LOOKBACK = CFG.get("lookback_hours", 24)
 
 SLACK_WEBHOOK = os.environ["SLACK_WEBHOOK_URL"]
-ANTHROPIC_KEY = os.environ["ANTHROPIC_API_KEY"]
+OPENAI_KEY = os.environ["OPENAI_API_KEY"]
 
-client = Anthropic(api_key=ANTHROPIC_KEY)
+client = OpenAI(api_key=OPENAI_KEY)
 CUTOFF = datetime.now(timezone.utc) - timedelta(hours=LOOKBACK)
 
 
@@ -124,7 +123,7 @@ def fetch_scholar():
     return results
 
 
-# -------- Summarize with Claude --------
+# -------- Summarize with OpenAI --------
 def summarize(title, abstract):
     if not abstract:
         return "_No abstract available._"
@@ -138,12 +137,12 @@ Abstract: {abstract}
 
 Return only the bullets, no preamble."""
     try:
-        msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
             max_tokens=300,
             messages=[{"role": "user", "content": prompt}],
         )
-        return msg.content[0].text.strip()
+        return resp.choices[0].message.content.strip()
     except Exception as e:
         return f"_Summary failed: {e}_"
 
@@ -151,8 +150,7 @@ Return only the bullets, no preamble."""
 # -------- Slack --------
 def post_slack(papers):
     if not papers:
-        text = "📭 No new papers matching your keywords today."
-        requests.post(SLACK_WEBHOOK, json={"text": text})
+        requests.post(SLACK_WEBHOOK, json={"text": "📭 No new papers matching your keywords today."})
         return
 
     blocks = [{"type": "header", "text": {"type": "plain_text", "text": "📚 Daily Research Digest"}}]
@@ -172,7 +170,6 @@ def post_slack(papers):
 # -------- Main --------
 def main():
     all_papers = fetch_crossref() + fetch_arxiv() + fetch_scholar()
-    # dedupe by title
     seen, unique = set(), []
     for p in all_papers:
         key = p["title"].lower().strip()
