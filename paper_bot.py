@@ -16,6 +16,8 @@ with open("config.yaml") as f:
 GENOMIC_KW = [k.lower() for k in CFG["genomic_keywords"]]
 BEAN_KW = [k.lower() for k in CFG["bean_keywords"]]
 OTHER_KW = [k.lower() for k in CFG["other_keywords"]]
+PLANT_KW = [k.lower() for k in CFG["plant_keywords"]]
+PLANT_JOURNALS = {j.lower() for j in CFG.get("plant_journals", [])}
 JOURNALS = CFG["journals_crossref"]
 LOOKBACK = CFG.get("lookback_hours", 72)
 
@@ -51,8 +53,15 @@ def match_keywords(text, kw_list):
     return [kw for kw in kw_list if kw in text]
 
 
+def has_plant_context(p):
+    """Return True if paper is plant-related."""
+    if p.get("source", "").lower() in PLANT_JOURNALS:
+        return True
+    blob = f"{p.get('title','')} {p.get('abstract','')}".lower()
+    return bool(match_keywords(blob, PLANT_KW))
+
+
 def tag_paper(p):
-    """Attach keyword-hit info and compute a base score."""
     blob = f"{p.get('title','')} {p.get('abstract','')}".lower()
     p["_genomic_hits"] = match_keywords(blob, GENOMIC_KW)
     p["_bean_hits"] = match_keywords(blob, BEAN_KW)
@@ -92,7 +101,7 @@ def fetch_crossref():
                     "link": link,
                     "source": journal,
                 })
-                if has_any_keyword(p):
+                if has_any_keyword(p) and has_plant_context(p):
                     results.append(p)
         except Exception as e:
             print(f"Crossref error for {journal}: {e}", file=sys.stderr)
@@ -117,7 +126,7 @@ def fetch_arxiv():
                 "link": e.link,
                 "source": "arXiv",
             })
-            if has_any_keyword(p):
+            if has_any_keyword(p) and has_plant_context(p):
                 results.append(p)
     except Exception as ex:
         print(f"arXiv error: {ex}", file=sys.stderr)
@@ -129,10 +138,9 @@ def fetch_biorxiv():
     results = []
     end = datetime.now(timezone.utc).date()
     start = (datetime.now(timezone.utc) - timedelta(hours=LOOKBACK)).date()
-    url = f"https://api.biorxiv.org/details/biorxiv/{start}/{end}/0"
     try:
         cursor = 0
-        for _ in range(5):  # pull up to 5 pages (~500 papers)
+        for _ in range(5):
             page_url = f"https://api.biorxiv.org/details/biorxiv/{start}/{end}/{cursor}"
             r = requests.get(page_url, timeout=30)
             data = r.json()
@@ -150,7 +158,7 @@ def fetch_biorxiv():
                     "link": link,
                     "source": "bioRxiv",
                 })
-                if has_any_keyword(p):
+                if has_any_keyword(p) and has_plant_context(p):
                     results.append(p)
             cursor += len(papers)
             if len(papers) < 100:
@@ -162,7 +170,13 @@ def fetch_biorxiv():
 
 # -------- Slot-based selection --------
 def pick_by_slots(papers):
-    """Pick 1 genomic + 1 bean + 1 bioRxiv, filling gaps with next-best."""
+    """
+    Strict slot rule:
+      - Slot 1: genomic keyword, non-bioRxiv preferred (fall back to any)
+      - Slot 2: bean keyword, non-bioRxiv preferred (fall back to any)
+      - Slot 3: bioRxiv (any keyword)
+    Each slot can be empty if no match exists.
+    """
     picked = []
     picked_ids = set()
 
@@ -174,20 +188,18 @@ def pick_by_slots(papers):
                 return True
         return False
 
-    # Slot 1: genomic (any source)
-    take([p for p in papers if p["_genomic_hits"]])
-    # Slot 2: bean (any source, not already picked)
-    take([p for p in papers if p["_bean_hits"]])
-    # Slot 3: bioRxiv (any keyword)
-    take([p for p in papers if p["source"] == "bioRxiv"])
+    # Slot 1: genomic
+    non_biorxiv_genomic = [p for p in papers if p["_genomic_hits"] and p["source"] != "bioRxiv"]
+    if not take(non_biorxiv_genomic):
+        take([p for p in papers if p["_genomic_hits"]])
 
-    # Fill any empty slots with best remaining
-    remaining = [p for p in papers if paper_id(p) not in picked_ids]
-    while len(picked) < 3 and remaining:
-        best = max(remaining, key=lambda x: x["score"])
-        picked.append(best)
-        picked_ids.add(paper_id(best))
-        remaining = [p for p in remaining if paper_id(p) not in picked_ids]
+    # Slot 2: bean
+    non_biorxiv_bean = [p for p in papers if p["_bean_hits"] and p["source"] != "bioRxiv"]
+    if not take(non_biorxiv_bean):
+        take([p for p in papers if p["_bean_hits"]])
+
+    # Slot 3: bioRxiv
+    take([p for p in papers if p["source"] == "bioRxiv"])
 
     return picked
 
@@ -195,7 +207,7 @@ def pick_by_slots(papers):
 # -------- Slack --------
 def post_slack(papers):
     if not papers:
-        requests.post(SLACK_WEBHOOK, json={"text": "📭 No new papers matching your keywords today."})
+        requests.post(SLACK_WEBHOOK, json={"text": "📭 No new plant papers matching your keywords today."})
         return
 
     blocks = [{"type": "header", "text": {"type": "plain_text", "text": "📚 Daily Research Digest"}}]
@@ -219,7 +231,6 @@ def main():
     seen = load_seen()
     all_papers = fetch_crossref() + fetch_arxiv() + fetch_biorxiv()
 
-    # filter already-seen and dedupe within run
     run_seen, unique = set(), []
     for p in all_papers:
         pid = paper_id(p)
