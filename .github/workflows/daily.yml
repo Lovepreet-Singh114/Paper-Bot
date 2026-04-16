@@ -21,7 +21,6 @@ jobs:
       - run: python paper_bot.py
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       - name: Commit seen.json
         run: |
           git config user.name "github-actions[bot]"
