@@ -1,0 +1,36 @@
+keywords:
+  - "genomic selection"
+  - "genomic prediction"
+  - "GEBV"
+  - "BLUP"
+  - "GWAS"
+  - "high-throughput phenotyping"
+  - "UAV phenotyping"
+  - "hyperspectral phenotyping"
+  - "plant phenomics"
+  - "Phaseolus vulgaris"
+  - "common bean"
+  - "dry bean"
+
+journals_crossref:
+  - "Theoretical and Applied Genetics"
+  - "Genetics Selection Evolution"
+  - "G3: Genes, Genomes, Genetics"
+  - "The Plant Genome"
+  - "Heredity"
+  - "Frontiers in Genetics"
+  - "Plant Phenomics"
+  - "Plant Methods"
+  - "Frontiers in Plant Science"
+  - "Journal of Experimental Botany"
+  - "Crop Science"
+  - "Crop Breeding and Applied Biotechnology"
+  - "Euphytica"
+  - "Field Crops Research"
+  - "Agronomy Journal"
+  - "Molecular Breeding"
+  - "Plant Breeding"
+  - "Nature Plants"
+
+top_n: 2
+lookback_hours: 24
