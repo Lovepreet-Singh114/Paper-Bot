@@ -1,5 +1,4 @@
-keywords:
-  # Genomic selection / prediction
+genomic_keywords:
   - "genomic selection"
   - "genomic prediction"
   - "genomic estimated breeding value"
@@ -12,15 +11,21 @@ keywords:
   - "bayesian prediction"
   - "BayesB"
   - "genome-wide prediction"
-
-  # GWAS / QTL
   - "GWAS"
   - "genome-wide association"
   - "QTL mapping"
   - "marker-assisted selection"
   - "SNP marker"
 
-  # Phenomics / phenotyping
+bean_keywords:
+  - "Phaseolus vulgaris"
+  - "common bean"
+  - "dry bean"
+  - "dry edible bean"
+  - "snap bean"
+  - "bean breeding"
+
+other_keywords:
   - "high-throughput phenotyping"
   - "high throughput phenotyping"
   - "UAV phenotyping"
@@ -31,16 +36,6 @@ keywords:
   - "plant phenomics"
   - "field phenotyping"
   - "remote sensing phenotyping"
-
-  # Dry bean / Phaseolus
-  - "Phaseolus vulgaris"
-  - "common bean"
-  - "dry bean"
-  - "dry edible bean"
-  - "snap bean"
-  - "bean breeding"
-
-  # Broader plant/crop genomics
   - "crop genomics"
   - "plant genomics"
   - "legume genomics"
@@ -58,7 +53,6 @@ keywords:
   - "drought tolerance"
   - "disease resistance"
   - "abiotic stress"
-  - "whole genome sequencing"
 
 journals_crossref:
   - "Theoretical and Applied Genetics"
