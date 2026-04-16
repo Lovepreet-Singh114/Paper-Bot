@@ -1,36 +1,47 @@
 keywords:
+  # Genomic selection / prediction
   - "genomic selection"
   - "genomic prediction"
+  - "genomic estimated breeding value"
   - "GEBV"
+  - "GS model"
   - "BLUP"
+  - "GBLUP"
+  - "rrBLUP"
+  - "ssGBLUP"
+  - "bayesian prediction"
+  - "BayesB"
+  - "genome-wide prediction"
+  - "Whole genome sequencing"
+  - "RNA-seq"
+  
+
+  # GWAS / QTL
   - "GWAS"
+  - "genome-wide association"
+  - "QTL mapping"
+  - "marker-assisted selection"
+  - "SNP marker"
+
+  # Phenomics / phenotyping
   - "high-throughput phenotyping"
+  - "high throughput phenotyping"
   - "UAV phenotyping"
+  - "drone phenotyping"
   - "hyperspectral phenotyping"
+  - "multispectral phenotyping"
+  - "image-based phenotyping"
   - "plant phenomics"
+  - "field phenotyping"
+  - "remote sensing phenotyping"
+
+  # Dry bean / Phaseolus
   - "Phaseolus vulgaris"
   - "common bean"
   - "dry bean"
-
-journals_crossref:
-  - "Theoretical and Applied Genetics"
-  - "Genetics Selection Evolution"
-  - "G3: Genes, Genomes, Genetics"
-  - "The Plant Genome"
-  - "Heredity"
-  - "Frontiers in Genetics"
-  - "Plant Phenomics"
-  - "Plant Methods"
-  - "Frontiers in Plant Science"
-  - "Journal of Experimental Botany"
-  - "Crop Science"
-  - "Crop Breeding and Applied Biotechnology"
-  - "Euphytica"
-  - "Field Crops Research"
-  - "Agronomy Journal"
-  - "Molecular Breeding"
-  - "Plant Breeding"
-  - "Nature Plants"
+  - "dry edible bean"
+  - "snap bean"
+  - "bean breeding"
 
 top_n: 2
-lookback_hours: 72
+lookback_hours: 720
