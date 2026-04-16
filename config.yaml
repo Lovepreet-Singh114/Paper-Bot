@@ -9,8 +9,6 @@ genomic_keywords:
   - "rrBLUP"
   - "ssGBLUP"
 
-
-
 bean_keywords:
   - "Phaseolus vulgaris"
   - "common bean"
@@ -54,7 +52,7 @@ other_keywords:
   - "marker-assisted selection"
   - "SNP marker"
 
-  plant_keywords:
+plant_keywords:
   - "plant"
   - "plants"
   - "crop"
