@@ -3,6 +3,7 @@ import re
 import sys
 import yaml
 import time
+import json
 import requests
 import feedparser
 from datetime import datetime, timedelta, timezone
@@ -16,13 +17,34 @@ with open("config.yaml") as f:
 KEYWORDS = [k.lower() for k in CFG["keywords"]]
 JOURNALS = CFG["journals_crossref"]
 TOP_N = CFG.get("top_n", 2)
-LOOKBACK = CFG.get("lookback_hours", 24)
+LOOKBACK = CFG.get("lookback_hours", 72)
 
 SLACK_WEBHOOK = os.environ["SLACK_WEBHOOK_URL"]
 OPENAI_KEY = os.environ["OPENAI_API_KEY"]
 
 client = OpenAI(api_key=OPENAI_KEY)
 CUTOFF = datetime.now(timezone.utc) - timedelta(hours=LOOKBACK)
+
+SEEN_FILE = "seen.json"
+
+
+# -------- Seen tracking --------
+def load_seen():
+    if os.path.exists(SEEN_FILE):
+        with open(SEEN_FILE) as f:
+            return set(json.load(f))
+    return set()
+
+
+def save_seen(seen):
+    # keep only the most recent 2000 to avoid unbounded growth
+    trimmed = list(seen)[-2000:]
+    with open(SEEN_FILE, "w") as f:
+        json.dump(trimmed, f)
+
+
+def paper_id(p):
+    return (p.get("link") or p.get("title", "")).strip().lower()
 
 
 # -------- Scoring --------
@@ -67,7 +89,7 @@ def fetch_crossref():
 def fetch_arxiv():
     results = []
     query = " OR ".join([f'all:"{kw}"' for kw in KEYWORDS])
-    url = f"http://export.arxiv.org/api/query?search_query={quote_plus(query)}&sortBy=submittedDate&sortOrder=descending&max_results=30"
+    url = f"http://export.arxiv.org/api/query?search_query={quote_plus(query)}&sortBy=submittedDate&sortOrder=descending&max_results=50"
     try:
         feed = feedparser.parse(url)
         for e in feed.entries:
@@ -87,39 +109,6 @@ def fetch_arxiv():
                 })
     except Exception as ex:
         print(f"arXiv error: {ex}", file=sys.stderr)
-    return results
-
-
-# -------- Google Scholar --------
-def fetch_scholar():
-    results = []
-    try:
-        from scholarly import scholarly
-        for kw in KEYWORDS[:4]:  # limit queries to avoid blocking
-            try:
-                search = scholarly.search_pubs(kw, year_low=datetime.now().year)
-                for _ in range(3):
-                    pub = next(search, None)
-                    if not pub:
-                        break
-                    bib = pub.get("bib", {})
-                    title = bib.get("title", "")
-                    abstract = bib.get("abstract", "")
-                    link = pub.get("pub_url", "")
-                    s = score(title + " " + abstract)
-                    if s > 0:
-                        results.append({
-                            "title": title,
-                            "abstract": abstract,
-                            "link": link,
-                            "source": "Google Scholar",
-                            "score": s,
-                        })
-            except Exception as e:
-                print(f"Scholar kw error: {e}", file=sys.stderr)
-            time.sleep(2)
-    except Exception as e:
-        print(f"Scholar import error: {e}", file=sys.stderr)
     return results
 
 
@@ -169,15 +158,25 @@ def post_slack(papers):
 
 # -------- Main --------
 def main():
-    all_papers = fetch_crossref() + fetch_arxiv() + fetch_scholar()
-    seen, unique = set(), []
+    seen = load_seen()
+    all_papers = fetch_crossref() + fetch_arxiv()
+
+    # dedupe within this run + filter already-seen
+    run_seen, unique = set(), []
     for p in all_papers:
-        key = p["title"].lower().strip()
-        if key not in seen:
-            seen.add(key)
-            unique.append(p)
+        pid = paper_id(p)
+        if pid in run_seen or pid in seen:
+            continue
+        run_seen.add(pid)
+        unique.append(p)
+
     top = sorted(unique, key=lambda x: x["score"], reverse=True)[:TOP_N]
     post_slack(top)
+
+    # mark as seen and save
+    for p in top:
+        seen.add(paper_id(p))
+    save_seen(seen)
 
 
 if __name__ == "__main__":
